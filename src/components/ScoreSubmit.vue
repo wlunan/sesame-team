@@ -1,0 +1,167 @@
+<template>
+  <div class="card">
+    <h2 class="text-2xl font-bold text-gray-800 mb-2 text-center">
+      🧧 提交你的分数
+    </h2>
+    <p class="text-sm text-gray-600 text-center mb-6">
+      三人分数之和等于2026，即可互享口令红包！
+    </p>
+    
+    <form @submit.prevent="handleSubmit" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">
+          芝麻分 <span class="text-red-500">*</span>
+        </label>
+        <input
+          v-model.number="score"
+          type="number"
+          required
+          min="0"
+          max="950"
+          class="input"
+          placeholder="输入你的芝麻分 (0-950)"
+        />
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">
+          口令 <span class="text-red-500">*</span>
+        </label>
+        <input
+          v-model="command"
+          type="text"
+          required
+          class="input"
+          placeholder="输入口令"
+        />
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">
+          邮箱 <span class="text-red-500">*</span>
+        </label>
+        <input
+          v-model="email"
+          type="email"
+          required
+          class="input"
+          placeholder="接收匹配通知的邮箱"
+        />
+      </div>
+      
+      <div v-if="error" class="text-red-500 text-sm bg-red-50 p-3 rounded-lg">
+        {{ error }}
+      </div>
+      
+      <div v-if="success" class="text-green-600 text-sm bg-green-50 p-3 rounded-lg">
+        {{ success }}
+      </div>
+      
+      <button
+        type="submit"
+        :disabled="loading"
+        class="btn btn-primary w-full text-lg"
+      >
+        {{ loading ? '提交中...' : '🚀 提交分数' }}
+      </button>
+    </form>
+    
+    <div class="mt-6 space-y-2 text-xs text-gray-500">
+      <p>📢 匹配逻辑已更新，一个分数可用于多人匹配</p>
+      <p>📢 优先匹配800+分，支持多组匹配</p>
+      <p>📢 匹配成功后将发送邮件通知</p>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { supabase, TABLES } from '@/lib/supabase'
+import { translateError } from '@/lib/error'
+
+const authStore = useAuthStore()
+
+const score = ref(null)
+const command = ref('')
+const email = ref(authStore.user?.email || '')
+const loading = ref(false)
+const error = ref('')
+const success = ref('')
+
+const handleSubmit = async () => {
+  error.value = ''
+  success.value = ''
+  
+  if (!authStore.isAuthenticated) {
+    error.value = '请先登录后再提交分数'
+    return
+  }
+  
+  if (score.value < 0 || score.value > 950) {
+    error.value = '分数必须在 0-950 之间'
+    return
+  }
+  
+  loading.value = true
+  
+  try {
+    const startOfDay = new Date()
+    startOfDay.setHours(0, 0, 0, 0)
+
+    const { count: todayCount, error: countError } = await supabase
+      .from(TABLES.SCORES)
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', authStore.user.id)
+      .gte('created_at', startOfDay.toISOString())
+
+    if (countError) throw countError
+
+    if ((todayCount || 0) >= 1) {
+      error.value = '每天只能提交一次分数，请明天再来'
+      return
+    }
+
+    const { data, error: insertError } = await supabase
+      .from(TABLES.SCORES)
+      .insert([
+        {
+          user_id: authStore.user.id,
+          score: score.value,
+          command: command.value,
+          email: email.value,
+          status: 'pending'
+        }
+      ])
+      .select()
+    
+    if (insertError) throw insertError
+    
+    success.value = '✅ 提交成功！系统将自动为您匹配，请等待邮件通知。'
+    
+    // 清空表单
+    score.value = null
+    command.value = ''
+    
+    // 触发匹配算法（实际应该在后端定时执行）
+    triggerMatching()
+    
+  } catch (err) {
+    console.error('Submit error:', err)
+    error.value = translateError(err)
+  } finally {
+    loading.value = false
+  }
+}
+
+// 触发匹配算法（调用数据库函数）
+const triggerMatching = async () => {
+  try {
+    const { data, error } = await supabase.rpc('find_and_create_matches')
+    if (error) console.error('Matching error:', error)
+    else console.log('Matching completed:', data)
+  } catch (err) {
+    console.error('Trigger matching error:', err)
+  }
+}
+</script>
