@@ -30,6 +30,19 @@
 
     <!-- 主要内容 -->
     <router-view />
+
+    <footer class="border-t bg-white">
+      <div class="max-w-6xl mx-auto px-4 py-4 text-center">
+        <a
+          href="https://link3.cc/lunan"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-base font-semibold text-red-600 hover:text-red-700"
+        >
+          更多内容
+        </a>
+      </div>
+    </footer>
   </div>
 </template>
 

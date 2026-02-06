@@ -2,6 +2,8 @@
 
 三人分数之和等于2026，即可互享芝麻宝口令红包！
 
+![演示图片](./public/image.png)
+
 ## 技术栈
 
 - **前端**: Vue 3 + Vite + TailwindCSS
