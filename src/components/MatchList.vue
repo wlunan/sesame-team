@@ -76,7 +76,7 @@
             </button>
             <button
               v-if="!item.isMine"
-              @click="reportScore(item.scoreId)"
+              @click="reportScore(item.scoreId, item.matchId)"
               class="text-xs text-gray-500 hover:text-red-600 underline w-full mt-2"
             >
               ⚠️ 举报口令
@@ -147,18 +147,21 @@ const getMatchItems = (match) => {
   return [
     {
       scoreId: match.score_id_1,
+      matchId: match.match_id,
       score: match.score_1,
       command: match.command_1,
       isMine: match.user_id_1 === userId
     },
     {
       scoreId: match.score_id_2,
+      matchId: match.match_id,
       score: match.score_2,
       command: match.command_2,
       isMine: match.user_id_2 === userId
     },
     {
       scoreId: match.score_id_3,
+      matchId: match.match_id,
       score: match.score_3,
       command: match.command_3,
       isMine: match.user_id_3 === userId
@@ -175,7 +178,11 @@ const getStatusText = (status) => {
   return statusMap[status] || status
 }
 
-const reportScore = async (scoreId) => {
+const reportScore = async (scoreId, matchId) => {
+  if (!scoreId) {
+    alert('举报失败：缺少口令标识，请先执行数据库更新')
+    return
+  }
   if (!confirm('确定要举报此口令为失效吗？')) return
   
   try {
@@ -184,6 +191,7 @@ const reportScore = async (scoreId) => {
       .insert([
         {
           score_id: scoreId,
+          match_id: matchId,
           reporter_id: authStore.user.id,
           reason: '口令失效'
         }

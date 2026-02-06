@@ -25,7 +25,7 @@
       
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">
-          口令 <span class="text-red-500">*</span>
+          芝麻分组队口令（勿恶意输入无关内容） <span class="text-red-500">*</span>
         </label>
         <input
           v-model="command"

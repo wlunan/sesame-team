@@ -17,6 +17,9 @@
             class="input"
             placeholder="your@email.com"
           />
+          <p v-if="!isLogin" class="mt-2 text-xs text-gray-500">
+            📌 注册需要使用本人邮箱接收确认链接，请勿填写他人邮箱
+          </p>
         </div>
         
         <div>

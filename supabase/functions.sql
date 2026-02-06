@@ -40,6 +40,7 @@ DECLARE
   needed_score INTEGER;
   new_match_id UUID;
   user_score_id UUID;
+  user_match_count INTEGER;
 BEGIN
   -- 获取用户的分数记录
   SELECT id INTO user_score_id
@@ -49,6 +50,20 @@ BEGIN
   LIMIT 1;
 
   IF user_score_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- 限制同一用户最多匹配成功两次
+  SELECT COUNT(*) INTO user_match_count
+  FROM matches
+  WHERE score_id_1 = user_score_id
+     OR score_id_2 = user_score_id
+     OR score_id_3 = user_score_id;
+
+  IF user_match_count >= 2 THEN
+    UPDATE scores
+    SET status = 'matched'
+    WHERE id = user_score_id;
     RETURN;
   END IF;
 
@@ -93,6 +108,13 @@ BEGIN
       INSERT INTO matches (score_id_1, score_id_2, score_id_3, total)
       VALUES (rec1.id, rec2.id, rec3.id, target_sum)
       RETURNING id INTO new_match_id;
+
+      -- 达到上限后标记为已匹配，避免继续匹配
+      IF user_match_count + 1 >= 2 THEN
+        UPDATE scores
+        SET status = 'matched'
+        WHERE id = user_score_id;
+      END IF;
       
       -- 返回匹配结果
       match_id := new_match_id;
