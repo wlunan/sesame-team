@@ -64,9 +64,23 @@
             <div class="text-xs text-gray-600 mb-2">
               {{ item.isMine ? '(我的)' : '' }}
             </div>
-            <div class="text-xs font-mono bg-gray-100 px-2 py-1 rounded break-all">
+            <div class="text-xs font-mono bg-gray-100 px-2 py-1 rounded break-all mb-2">
               {{ item.command }}
             </div>
+            <button
+              v-if="!item.isMine"
+              @click="copyToClipboard(item.command)"
+              class="text-xs text-blue-600 hover:text-blue-800 underline w-full"
+            >
+              📋 复制口令
+            </button>
+            <button
+              v-if="!item.isMine"
+              @click="reportScore(item.scoreId)"
+              class="text-xs text-gray-500 hover:text-red-600 underline w-full mt-2"
+            >
+              ⚠️ 举报口令
+            </button>
           </div>
         </div>
         
@@ -74,13 +88,9 @@
           <div class="text-sm">
             总和: <span class="font-bold text-red-600 text-lg">2026</span>
           </div>
-          <button
-            v-if="match.status === 'active'"
-            @click="reportMatch(match.match_id)"
-            class="text-xs text-gray-500 hover:text-red-600 underline"
-          >
-            举报失效
-          </button>
+          <span class="text-xs text-gray-500">
+            举报任意口令，累计≥2人将标记失效
+          </span>
         </div>
       </div>
     </div>
@@ -136,16 +146,19 @@ const getMatchItems = (match) => {
   const userId = authStore.user?.id
   return [
     {
+      scoreId: match.score_id_1,
       score: match.score_1,
       command: match.command_1,
       isMine: match.user_id_1 === userId
     },
     {
+      scoreId: match.score_id_2,
       score: match.score_2,
       command: match.command_2,
       isMine: match.user_id_2 === userId
     },
     {
+      scoreId: match.score_id_3,
       score: match.score_3,
       command: match.command_3,
       isMine: match.user_id_3 === userId
@@ -162,27 +175,26 @@ const getStatusText = (status) => {
   return statusMap[status] || status
 }
 
-const reportMatch = async (matchId) => {
-  if (!confirm('确定要举报此匹配为失效吗？')) return
+const reportScore = async (scoreId) => {
+  if (!confirm('确定要举报此口令为失效吗？')) return
   
   try {
     const { error: reportError } = await supabase
       .from('reports')
       .insert([
         {
-          match_id: matchId,
+          score_id: scoreId,
           reporter_id: authStore.user.id,
           reason: '口令失效'
         }
       ])
     
-    if (reportError) throw reportError
-    
-    // 更新匹配状态
-    await supabase
-      .from('matches')
-      .update({ status: 'reported' })
-      .eq('id', matchId)
+    if (reportError) {
+      if (String(reportError.message || '').includes('idx_reports_unique_score_reporter')) {
+        throw new Error('你已经举报过该口令')
+      }
+      throw reportError
+    }
     
     alert('举报成功！')
     loadMatches()
@@ -202,5 +214,15 @@ const formatDate = (dateString) => {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+const copyToClipboard = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text)
+    alert('口令已复制到剪贴板！')
+  } catch (err) {
+    console.error('复制失败:', err)
+    alert('复制失败，请手动复制')
+  }
 }
 </script>

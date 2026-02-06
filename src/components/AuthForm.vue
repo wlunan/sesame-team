@@ -103,7 +103,7 @@ const handleSubmit = async () => {
       if (signUpError) {
         error.value = translateError(signUpError)
       } else {
-        success.value = '注册成功！请检查邮箱确认注册。'
+        success.value = '注册成功！请前往邮箱查看确认链接（如果收件箱没有，请检查垃圾箱）。'
         email.value = ''
         password.value = ''
       }

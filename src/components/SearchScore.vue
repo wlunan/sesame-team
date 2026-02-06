@@ -36,7 +36,7 @@
         :key="result.id"
         class="bg-gray-50 p-3 rounded-lg text-sm"
       >
-        <div class="flex justify-between items-center">
+        <div class="flex justify-between items-center mb-2">
           <div>
             <span class="font-bold text-red-600">{{ result.score }}</span> 分
             <span class="text-gray-500 ml-2">
@@ -53,11 +53,26 @@
             {{ result.status === 'pending' ? '可用' : '已匹配' }}
           </span>
         </div>
+        <div class="flex items-center justify-between text-xs text-gray-600">
+          <div>
+            口令：<span class="font-mono bg-white px-2 py-1 rounded">{{ result.command }}</span>
+          </div>
+          <button
+            @click="copyToClipboard(result.command)"
+            class="text-blue-600 hover:text-blue-800 underline ml-2"
+          >
+            📋 复制
+          </button>
+        </div>
       </div>
     </div>
     
     <div v-else-if="searched" class="text-center text-gray-500 py-4">
       暂无该分数的记录
+    </div>
+
+    <div class="mt-4 text-xs text-gray-500">
+      📢 每日最多搜索 5 次
     </div>
   </div>
 </template>
@@ -146,5 +161,15 @@ const formatDate = (dateString) => {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+const copyToClipboard = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text)
+    alert('口令已复制到剪贴板！')
+  } catch (err) {
+    console.error('复制失败:', err)
+    alert('复制失败，请手动复制')
+  }
 }
 </script>

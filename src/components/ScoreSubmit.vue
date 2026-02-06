@@ -65,11 +65,20 @@
         {{ loading ? '提交中...' : '🚀 提交分数' }}
       </button>
     </form>
+
+    <button
+      v-if="canRematch"
+      @click="handleRematch"
+      :disabled="rematchLoading"
+      class="btn btn-secondary w-full mt-4"
+    >
+      {{ rematchLoading ? '匹配中...' : '🔄 再次匹配' }}
+    </button>
     
     <div class="mt-6 space-y-2 text-xs text-gray-500">
-      <p>📢 匹配逻辑已更新，一个分数可用于多人匹配</p>
-      <p>📢 优先匹配800+分，支持多组匹配</p>
-      <p>📢 匹配成功后将发送邮件通知</p>
+      <p>📢 同一邮箱每日最多提交 2 次</p>
+      <p>📢 提交后自动匹配一次，点击"再次匹配"寻找新队伍</p>
+      <p>📢 优先匹配800+分，每次返回不同队伍</p>
     </div>
   </div>
 </template>
@@ -86,8 +95,10 @@ const score = ref(null)
 const command = ref('')
 const email = ref(authStore.user?.email || '')
 const loading = ref(false)
+const rematchLoading = ref(false)
 const error = ref('')
 const success = ref('')
+const canRematch = ref(false)
 
 const handleSubmit = async () => {
   error.value = ''
@@ -102,6 +113,11 @@ const handleSubmit = async () => {
     error.value = '分数必须在 0-950 之间'
     return
   }
+
+  if (!email.value) {
+    error.value = '请填写邮箱'
+    return
+  }
   
   loading.value = true
   
@@ -112,13 +128,13 @@ const handleSubmit = async () => {
     const { count: todayCount, error: countError } = await supabase
       .from(TABLES.SCORES)
       .select('id', { count: 'exact', head: true })
-      .eq('user_id', authStore.user.id)
+      .eq('email', email.value)
       .gte('created_at', startOfDay.toISOString())
 
     if (countError) throw countError
 
-    if ((todayCount || 0) >= 1) {
-      error.value = '每天只能提交一次分数，请明天再来'
+    if ((todayCount || 0) >= 2) {
+      error.value = '同一邮箱每天最多提交 2 次，请明天再来'
       return
     }
 
@@ -137,14 +153,15 @@ const handleSubmit = async () => {
     
     if (insertError) throw insertError
     
-    success.value = '✅ 提交成功！系统将自动为您匹配，请等待邮件通知。'
+    success.value = '✅ 提交成功！系统将自动为您匹配。'
+    canRematch.value = true
     
     // 清空表单
     score.value = null
     command.value = ''
     
-    // 触发匹配算法（实际应该在后端定时执行）
-    triggerMatching()
+    // 触发首次匹配
+    await triggerMatching()
     
   } catch (err) {
     console.error('Submit error:', err)
@@ -157,11 +174,39 @@ const handleSubmit = async () => {
 // 触发匹配算法（调用数据库函数）
 const triggerMatching = async () => {
   try {
-    const { data, error } = await supabase.rpc('find_and_create_matches')
+    const { data, error } = await supabase.rpc('find_single_match', {
+      p_user_id: authStore.user.id
+    })
     if (error) console.error('Matching error:', error)
     else console.log('Matching completed:', data)
   } catch (err) {
     console.error('Trigger matching error:', err)
+  }
+}
+
+// 再次匹配
+const handleRematch = async () => {
+  error.value = ''
+  success.value = ''
+  rematchLoading.value = true
+  
+  try {
+    const { data, error: matchError } = await supabase.rpc('find_single_match', {
+      p_user_id: authStore.user.id
+    })
+    
+    if (matchError) throw matchError
+    
+    if (data && data.length > 0) {
+      success.value = '✅ 找到新的匹配队伍！请查看匹配记录。'
+    } else {
+      error.value = '暂未找到新的匹配队伍，请稍后再试'
+    }
+  } catch (err) {
+    console.error('Rematch error:', err)
+    error.value = translateError(err)
+  } finally {
+    rematchLoading.value = false
   }
 }
 </script>

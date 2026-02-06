@@ -24,8 +24,8 @@ curl -X POST 'https://your-project.supabase.co/functions/v1/match-scores' \
   -H 'Content-Type: application/json'
 */
 
--- 创建存储过程：简化版匹配算法（数据库内执行）
-CREATE OR REPLACE FUNCTION find_and_create_matches()
+-- 创建存储过程：单次匹配算法（避免重复队伍）
+CREATE OR REPLACE FUNCTION find_single_match(p_user_id UUID)
 RETURNS TABLE(
   match_id UUID,
   score_1 INTEGER,
@@ -39,50 +39,71 @@ DECLARE
   rec3 RECORD;
   needed_score INTEGER;
   new_match_id UUID;
+  user_score_id UUID;
 BEGIN
-  -- 获取所有待匹配的分数（优先800+）
-  FOR rec1 IN 
-    SELECT * FROM scores 
-    WHERE status = 'pending' 
+  -- 获取用户的分数记录
+  SELECT id INTO user_score_id
+  FROM scores
+  WHERE user_id = p_user_id
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  IF user_score_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- 获取用户分数信息
+  SELECT * INTO rec1
+  FROM scores
+  WHERE id = user_score_id;
+
+  -- 查找第二个分数（排除已匹配过的组合）
+  FOR rec2 IN
+    SELECT * FROM scores
+    WHERE status = 'pending'
+    AND id != rec1.id
+    AND user_id != p_user_id
+    AND score <= (target_sum - rec1.score)
     ORDER BY score DESC, created_at ASC
   LOOP
-    FOR rec2 IN 
-      SELECT * FROM scores 
-      WHERE status = 'pending' 
-      AND id != rec1.id
-      AND score <= (target_sum - rec1.score)
-      ORDER BY score DESC, created_at ASC
-    LOOP
-      needed_score := target_sum - rec1.score - rec2.score;
+    needed_score := target_sum - rec1.score - rec2.score;
+    
+    -- 查找第三个分数
+    SELECT * INTO rec3
+    FROM scores
+    WHERE status = 'pending'
+    AND score = needed_score
+    AND id != rec1.id
+    AND id != rec2.id
+    AND user_id != p_user_id
+    AND NOT EXISTS (
+      -- 确保这个组合之前没有匹配过
+      SELECT 1 FROM matches
+      WHERE (score_id_1 = rec1.id AND score_id_2 = rec2.id)
+         OR (score_id_1 = rec1.id AND score_id_3 = rec2.id)
+         OR (score_id_2 = rec1.id AND score_id_1 = rec2.id)
+         OR (score_id_2 = rec1.id AND score_id_3 = rec2.id)
+         OR (score_id_3 = rec1.id AND score_id_1 = rec2.id)
+         OR (score_id_3 = rec1.id AND score_id_2 = rec2.id)
+    )
+    LIMIT 1;
+    
+    IF FOUND THEN
+      -- 创建匹配记录
+      INSERT INTO matches (score_id_1, score_id_2, score_id_3, total)
+      VALUES (rec1.id, rec2.id, rec3.id, target_sum)
+      RETURNING id INTO new_match_id;
       
-      -- 查找第三个分数
-      SELECT * INTO rec3
-      FROM scores
-      WHERE status = 'pending'
-      AND score = needed_score
-      AND id != rec1.id
-      AND id != rec2.id
-      LIMIT 1;
+      -- 返回匹配结果
+      match_id := new_match_id;
+      score_1 := rec1.score;
+      score_2 := rec2.score;
+      score_3 := rec3.score;
+      RETURN NEXT;
       
-      IF FOUND THEN
-        -- 创建匹配记录
-        INSERT INTO matches (score_id_1, score_id_2, score_id_3, total)
-        VALUES (rec1.id, rec2.id, rec3.id, target_sum)
-        RETURNING id INTO new_match_id;
-        
-        -- 注意：这里不更新状态，允许一个分数多次匹配
-        -- 如果要限制只匹配一次，取消下面的注释
-        -- UPDATE scores SET status = 'matched' 
-        -- WHERE id IN (rec1.id, rec2.id, rec3.id);
-        
-        -- 返回匹配结果
-        match_id := new_match_id;
-        score_1 := rec1.score;
-        score_2 := rec2.score;
-        score_3 := rec3.score;
-        RETURN NEXT;
-      END IF;
-    END LOOP;
+      -- 只返回一个匹配
+      RETURN;
+    END IF;
   END LOOP;
   
   RETURN;
@@ -90,4 +111,4 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 授予执行权限
-GRANT EXECUTE ON FUNCTION find_and_create_matches() TO authenticated;
+GRANT EXECUTE ON FUNCTION find_single_match(UUID) TO authenticated;
