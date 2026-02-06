@@ -10,21 +10,6 @@
     <form @submit.prevent="handleSubmit" class="space-y-4">
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">
-          芝麻分 <span class="text-red-500">*</span>
-        </label>
-        <input
-          v-model.number="score"
-          type="number"
-          required
-          min="0"
-          max="950"
-          class="input"
-          placeholder="输入你的芝麻分 (0-950)"
-        />
-      </div>
-      
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">
           芝麻分组队口令（勿恶意输入无关内容） <span class="text-red-500">*</span>
         </label>
         <input
@@ -32,8 +17,20 @@
           type="text"
           required
           class="input"
-          placeholder="输入口令"
+          placeholder="输入口令，如：672分 OUJE5BB904S ..."
         />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">
+          识别到的芝麻分
+        </label>
+        <div class="input bg-gray-50 text-gray-700">
+          {{ parsedScoreDisplay }}
+        </div>
+        <p class="text-xs text-gray-500 mt-1">
+          系统会从口令中自动解析“xxx分”作为分数
+        </p>
       </div>
       
       <div>
@@ -84,14 +81,13 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { supabase, TABLES } from '@/lib/supabase'
 import { translateError } from '@/lib/error'
 
 const authStore = useAuthStore()
 
-const score = ref(null)
 const command = ref('')
 const email = ref(authStore.user?.email || '')
 const loading = ref(false)
@@ -99,6 +95,19 @@ const rematchLoading = ref(false)
 const error = ref('')
 const success = ref('')
 const canRematch = ref(false)
+
+const parsedScore = computed(() => {
+  if (!command.value) return null
+  const match = command.value.match(/(\d{1,4})\s*分/)
+  if (!match) return null
+  const value = Number.parseInt(match[1], 10)
+  return Number.isNaN(value) ? null : value
+})
+
+const parsedScoreDisplay = computed(() => {
+  if (parsedScore.value === null) return '未识别'
+  return `${parsedScore.value}`
+})
 
 const handleSubmit = async () => {
   error.value = ''
@@ -109,8 +118,13 @@ const handleSubmit = async () => {
     return
   }
   
-  if (score.value < 0 || score.value > 950) {
-    error.value = '分数必须在 0-950 之间'
+  if (parsedScore.value === null) {
+    error.value = '未从口令中识别到分数，请检查是否包含“xxx分”'
+    return
+  }
+
+  if (parsedScore.value < 0 || parsedScore.value > 950) {
+    error.value = '识别到的分数必须在 0-950 之间'
     return
   }
 
@@ -143,7 +157,7 @@ const handleSubmit = async () => {
       .insert([
         {
           user_id: authStore.user.id,
-          score: score.value,
+          score: parsedScore.value,
           command: command.value,
           email: email.value,
           status: 'pending'
@@ -157,7 +171,6 @@ const handleSubmit = async () => {
     canRematch.value = true
     
     // 清空表单
-    score.value = null
     command.value = ''
     
     // 触发首次匹配
