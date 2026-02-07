@@ -134,3 +134,28 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 授予执行权限
 GRANT EXECUTE ON FUNCTION find_single_match(UUID) TO authenticated;
+
+-- 平台统计：仅返回聚合数值，避免暴露明细
+CREATE OR REPLACE FUNCTION get_platform_stats()
+RETURNS TABLE(
+  pending_people INTEGER,
+  matched_people INTEGER
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    (SELECT COUNT(*)::INTEGER FROM scores WHERE status = 'pending') AS pending_people,
+    (
+      SELECT COUNT(DISTINCT score_id)::INTEGER
+      FROM (
+        SELECT score_id_1 AS score_id FROM matches WHERE status = 'active'
+        UNION ALL
+        SELECT score_id_2 AS score_id FROM matches WHERE status = 'active'
+        UNION ALL
+        SELECT score_id_3 AS score_id FROM matches WHERE status = 'active'
+      ) AS t
+    ) AS matched_people;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION get_platform_stats() TO authenticated;

@@ -30,7 +30,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { supabase, TABLES } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { translateError } from '@/lib/error'
 
 const matchedPeople = ref(0)
@@ -56,30 +56,13 @@ const loadStats = async () => {
   error.value = ''
 
   try {
-    const { count: pendingCount, error: pendingError } = await supabase
-      .from(TABLES.SCORES)
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'pending')
+    const { data, error: statsError } = await supabase.rpc('get_platform_stats')
 
-    if (pendingError) throw pendingError
+    if (statsError) throw statsError
 
-    pendingPeople.value = pendingCount || 0
-
-    const { data: matchRows, error: matchError } = await supabase
-      .from(TABLES.MATCHES)
-      .select('score_id_1, score_id_2, score_id_3')
-      .eq('status', 'active')
-
-    if (matchError) throw matchError
-
-    const uniqueIds = new Set()
-    for (const row of matchRows || []) {
-      if (row.score_id_1) uniqueIds.add(row.score_id_1)
-      if (row.score_id_2) uniqueIds.add(row.score_id_2)
-      if (row.score_id_3) uniqueIds.add(row.score_id_3)
-    }
-
-    matchedPeople.value = uniqueIds.size
+    const stats = Array.isArray(data) ? data[0] : data
+    pendingPeople.value = stats?.pending_people || 0
+    matchedPeople.value = stats?.matched_people || 0
 
     setCachedStats({
       matchedPeople: matchedPeople.value,
